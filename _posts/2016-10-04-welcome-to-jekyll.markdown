@@ -1,7 +1,7 @@
 ---
 layout: post
 title:  "The vertex cover problem"
-date:   2016-10-04 16:55:42 -0300
+date:   2021-02-03 16:55:42 -0300
 categories: combinatorial optimization
 ---
 
