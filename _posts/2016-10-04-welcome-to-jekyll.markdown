@@ -1,7 +1,7 @@
 ---
 layout: post
 title:  "Greek Govt Budget per Ministry"
-date:   2021-01-02 16:55:42 -0300
+date:   2021-01-05 16:55:42 -0300
 categories: combinatorial optimization
 ---
 <script src="//code.jquery.com/jquery.js"></script>
