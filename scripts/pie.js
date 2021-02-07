@@ -33,11 +33,17 @@ var tooltip = d3.select("body")
 		.style("height", "30px")
     .style("background-color", "white");
 
+var arr = [];
 d3.csv("../../../../../../assets/budget.csv", type, function(error, data) {
   if (error) throw error;
 
 var row = 16;
 sorted_data = data.sort(function (x, y) {return d3.descending(+x.Budget, +y.Budget)});
+
+arr.push([data.Ministry, data.Budget]);
+
+console.log(data);
+
 var color = d3.scaleSequential()
     .interpolator(d3.interpolateInferno)
     .domain([1,16]);
@@ -74,6 +80,8 @@ var color = d3.scaleSequential()
 
 });
     
+console.log(arr);
+
 function type(d) {
   d.Budget= +d.Budget;
   return d;

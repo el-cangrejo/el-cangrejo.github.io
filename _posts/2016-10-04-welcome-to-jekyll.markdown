@@ -19,7 +19,6 @@ categories: combinatorial optimization
 
 </style>
 
-
 <script src="//d3js.org/d3.v4.js"></script>
 <script src="https://d3js.org/d3-scale-chromatic.v1.min.js"></script>
 <script src="../../../../../../scripts/bar_chart.js"></script>
