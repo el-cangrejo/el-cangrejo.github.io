@@ -1,0 +1,449 @@
+<!-- <!doctype html> -->
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="chrome=1">
+  <title>Synergies Projects</title>
+
+  <link rel="stylesheet" href="stylesheets/my_styles.css">
+  <link rel="stylesheet" href="stylesheets/pygment_trac.css">
+  <meta name="viewport" content="width=device-width">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+  <script>
+    MathJax = {
+      tex: {
+        inlineMath: [['$', '$'], ['\\(', '\\)']],
+        displayMath: [['$$','$$'], ['\\[', '\\]']],
+        processEscapes: true,
+        processEnvironments: true
+      },
+      options: {
+        skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre']
+      }
+    };
+
+    window.addEventListener('load', (event) => {
+        document.querySelectorAll("mjx-container").forEach(function(x){
+          x.parentElement.classList += 'has-jax'})
+      });
+  </script>
+
+  <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+
+  <script type="text/javascript" id="MathJax-script" async
+    src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+</head>
+<body>
+<div class="my_wrapper">
+  <h1>Conditional Postural Synergies II: <b>Force feedback control</b></h1>
+  <div class="toc">
+    <details >
+    <summary accesskey="c" title="(Alt + C)">
+      <span class="details">Table of Contents</span>
+    </summary>
+
+    <div class="inner">
+      <ul>
+        <li><a href="#contacts">Background</a></li>
+        <li><a href="#controller">Force Control using Synergies</a>
+          <ul>
+            <li><a href="#grasping">Grasping</li>
+            <li><a href="#releasing">Releasing</li>
+            <li><a href="#final_controller">Final Controller</li>
+          </ul>
+        </li>
+        <li><a href="#results">Experiments</a></li>
+        <li><a href="#conclusion">Conclusion</a></li>
+        <li><a href="#references">References</a></li>
+      </ul>
+    </div>
+    </details>
+  </div>
+
+  <p>
+
+    In the previous post, I presented a framework for efficiently controlling
+    a humanoid robotic hand in the synergy space. However, the previous approach
+    relies only on position control of the fingers without taking into account
+    any feedback information from the environment, preventing the ability to
+    react to external disturbances and uncertainties. In contrast, humans heavily
+    rely on tactile feedback, provided by tactile afferents located on the hand’s
+    skin to perform complex manipulation tasks that involve contact interactions
+    (<a class="one" href="http://brain.phgy.queensu.ca/flanagan/papers/FlaBowJoh_CON_06.pdf">Flanagan et al. 2006</a>,
+    <a class="one" href="http://www.cns.nyu.edu/~david/courses/sm12/Readings/Johansson_Flanagan%20nrn2009.pdf">Johansson et al. 2009</a>).
+
+    <br>
+    <br>
+
+    In this post, I will present our approach to incorporate tactile feedback into
+    the synergy framework that we developed previously and design a force controller 
+    for a multi-fingered robotic hand. The objective of the proposed controller is 
+    to stabilize objects during lifting and transporting as well as detect when to
+    release them when placing or during handovers based on a simple heuristic.
+
+  </p>
+
+  <br>
+  <h1 id="contacts">Background<a hidden class="anchor"
+      href="#contacts">#</a></h1>
+  <p>
+    
+    Existing approaches that utilize tactile sensors to modulate finger
+    control during grasping, primarily rely on slip prediction algorithms
+    (<a class="one" href="https://am.is.mpg.de/uploads_file/attachment/attachment/248/Su_hum_2015.pdf">Su et al. 2015</a>,
+    <a class="one" href="https://arxiv.org/pdf/1806.05031.pdf">Viega et al. 2018</a>).
+    These algorithms process force signals from the tactile sensors and
+    employ modern machine learning techniques, such as neural networks, to
+    predict slip occurrence. The predicted slip information is then utilized
+    to determine the desired normal forces required to prevent slippage.
+    Subsequently, each finger is commanded individually to apply the target
+    forces accordingly. However, the development of such algorithms typically
+    requires labeled datasets and is often constrained to specific objects
+    and hand orientations. Moreover, most proposed controllers focus solely
+    on either grasping or releasing objects, lacking the capability to
+    perform both tasks within a unified architecture. 
+
+    <br>
+    <br>
+
+    In our approach (<a class="one" href="https://ieeexplore.ieee.org/document/10000162">Dimou et al. 2022</a>), we do not attempt to detect slippage, instead, we focus on
+    contact modeling and parameter tuning such that we do not have slip We
+    model the contact mechanics using Coulomb's friction law.  In general
+    Coulomb's friction law states that the force of friction between two
+    surfaces is proportional to the normal force pressing the surfaces times
+    their friction coefficient. In our case, we want the fingers to press the
+    object to avoid slipping due to gravity. 
+
+  </p>
+
+  <br>
+  <img src="assets/project_force/contact_model.png" alt="me"
+  style="width:34%" class=center>
+  <figcaption>Fig. 1. Visual representation of contact modeling.</figcaption>
+  <br>
+
+  <p>
+    Let's take for example the situation shown in the Figure above where an
+    object is pressed against the wall with a force $f_n$ normal to the wall.
+    Gravity is pulling the object towards the earth with a force tangential to 
+    the wall $f_t = mg$. For the object to not slip on the wall's surface,
+    the normal force needs to be:
+    
+    $$f_n \geq \frac{f_t}{\mu} $$
+    
+    So when grasping an object and trying to avoid slip we will need the normal 
+    forces applied by the fingers to be higher than the force of gravity. 
+  
+  </p>
+
+  <br>
+  <h1 id="controller">Force Control using Synergies<a hidden class="anchor" href="#controller">#</a></h1>
+  
+  <p>
+
+    Our objective is to design a controller capable of grasping objects in a
+    manner that allows for lifting without slippage, while also being
+    adaptable to external disturbances and capable of releasing the object
+    when necessary. The key idea behind our approach stems from the
+    observation that, when an object is lifted, there is an external force
+    pulling it towards the ground due to gravity, resulting in net forces on
+    the fingertips that are directed downward. Conversely, when the object is
+    placed on a supporting surface, e.g. a table, there is an external force
+    pushing the object upward, as visualized in the Figure below. Building on
+    this assumption, our objective is to design a controller that can switch
+    between two distinct states: grasping and releasing, based on the
+    direction of the external forces.
+
+    <br>
+    <br>
+
+    To accomplish this, we will utilize the grasp size variable $g_{size}$ to
+    dynamically adjust the openness or closeness of the grasp as needed. The
+    grasp size represents the distance between the thumb tip and the
+    index fingertip in a grasp. When the grasp size decreases the normal
+    force applied to the surface of the object increases, since the fingers
+    move closer. The target grasp size, along with the desired grasp type,
+    will serve as inputs to a CVAE model, conditioned on grasp type and grasp
+    size, which will generate the corresponding grasp posture. The
+    calculation of the target grasp size is based on the desired normal force
+    $f_n^{des}$, that we intend the robotic hand to exert on the object and
+    the currently applied normal force. 
+  </p>
+
+  <br>
+  <img src="assets/project_force/idea.png" alt="me"
+  style="width:100%" class=center>
+  <figcaption>Fig. 2. Visual representation of the main idea behind our approach. </figcaption>
+
+  <br>
+  <h2 id="grasping">Grasping<a hidden class="anchor" href="#grasping">#</a></h2>
+
+  <p>
+    
+    In the <b>GRASP</b> state, our main goal during lifting and transporting
+    is to avoid object slip. Let's imagine a hypothetical scenario, in which
+    we have an object in a fixed position, we have a grasp pose for the hand,
+    and we want to lift the object. Thinking about it step by step, when the
+    hand reaches the target grasp pose we want the hand to start closing its
+    fingers until they come in contact with the objects surface. So, in the
+    beginning, the desired normal force takes a small value $f_n^
+    {offset}$, and the grasp size is reduced until it is achieved and we
+    ensure contact with the object. According to our contact modeling, in
+    order to avoid slip when lifting or holding the object, we want the
+    applied normal force to be equal to a gain $G$ times the tangential force
+    $f_t$. So, the final desired normal force $f_n^{des}$ during grasping is
+    the following:
+
+    $$ f_n^{des} = G \cdot f_t + f_n^{offset}$$
+
+    The applied normal force is controlled using the grasp size variable.
+    Basically, when the applied normal force is lower than the applied one
+    the desired grasp size is reduced to tighten the grip, and when it is
+    higher the grasp size is reduced. Because the force readings from the
+    sensors are noisy and can result in oscillations in the grasp size which
+    might cause instability of the object, instead of using the desired
+    normal force as a reference signal, we define a range of values that we
+    want it to be inside. We define a low threshold $f_n^{low} = f_n^{des} $
+    and a high threshold $f_n^{high} = f_n^{des} + w_{thr}$, where $w_
+    {thr}$ is the width of the range. The high threshold helps to prevent 
+    the robot from applying too much force and potentially damaging the 
+    hardware or the object.
+
+    <br>
+    <br>
+
+    After we compute the range for the desired normal force 
+    we can calculate if the actual measured normal 
+    force $f_n$ from the fingertip sensors is inside that
+    range and we can compute the difference with respect to 
+    the desired range's limits $df_n^{low} = f_n^{low} - f_n$ 
+    and $df_n^{high} = f_n^{high} - f_n$. 
+    The difference $df_n^{low}$ is greater than zero when the applied
+    force is below the desired one. In this case, we want the grasp 
+    size to decrease in order to apply greater force. 
+    The difference $df_n^{high}$ is greater than zero when the applied
+    force is above the high threshold. In this case, we want the 
+    grasp size to increase in order to apply less force.
+    So the grasp size $g_{size}$ is calculated using the following 
+    equation:
+
+    $$ 
+    g_{size} (n + 1) = g_{size} (n) + K \cdot 
+    (\Bbb{1}_{df_n^{low} > 0} \cdot df_n^{low} - 
+     \Bbb{1}_{df_n^{high} > 0} \cdot df_n^{high}) 
+    $$
+
+    where $K$ is a parameter that defines the rate of change of the grasp
+    size, i.e. how fast the hand closes and opens, and is determined
+    experimentally. The Figure below shows the change the change of 
+    the grasp size $dg_{size} = g_{size}(n+1) - g_{size} (n)$,
+    as a function of measured normal force $f_n$.
+
+  </p>
+
+  <br>
+  <img src="assets/project_force/gsize_function.png" alt="me"
+  style="width:50%" class=center>
+  <figcaption>Fig. 3. The change in the grasp size as a function of the applied normal force.</figcaption>
+
+  <br>
+  <h2 id="releasing">Releasing<a hidden class="anchor" href="#releasing">#</a></h2>
+
+  <p>
+
+    The robot enters the <b>RELEASE</b> state when it detects that the object is in
+    contact with a support surface, such as a table, or during a handover
+    when someone is pulling the object away. When the object is held in the
+    air, the only external force acting on it is gravity, which pulls it
+    downwards towards the ground. On the other hand, if the object is placed
+    on a support surface, the force of gravity is countered by the support
+    surface, resulting in a net upward external force. Using the tactile
+    reading, the robot can detect the direction of the applied force on the
+    object and determine whether it should release the object or maintain the
+    grasp.
+
+    <br>
+    <br>
+    
+    To determine whether the net tangential force on the object is due to
+    gravity or a support surface, we transform the force readings from the
+    fingertips into the world coordinate frame, using the world pose of the
+    hand. We can then compare the direction of the net tangential force with
+    the direction of gravity to determine if the robot should enter the
+    releasing state. If the angle between the net tangential force vector and
+    the gravity vector is less than 90 degrees, it indicates that the force
+    is directed towards the ground, suggesting that the tangential force is
+    primarily due to gravity pulling the object. In this case, the controller
+    remains in the grasping mode. Conversely, if the angle between the net
+    tangential force vector and the gravity vector exceeds 90 degrees, it
+    implies that the force is directed upwards. This suggests the presence of
+    a support surface pushing the object or someone pulling it from above,
+    triggering the releasing mode of the controller.
+
+    <br>
+    <br>
+
+    In the <b>RELEASE</b> state, the controller increases the grasp size
+    proportionally to measured the normal force until it does not apply any
+    force to it. The control law for the grasp size in this case is the
+    following:
+
+    $$ g_{size} (n + 1) = g_{size} (n) + K \cdot f_n$$
+
+  </p>
+
+  <br>
+  <h2 id="final_controller">Final Controller<a hidden class="anchor" href="#final_controller">#</a></h2>
+
+  <p>
+
+    During testing, we assume that a trajectory for the robotic arm,
+    consisting of waypoints, is provided to the robot. As the robot follows
+    the trajectory, it enters the <b>GRASP</b> state once it reaches the
+    target grasp pose. The hand starts in an open pre-grasp position. An
+    initial grasp posture is generated by sampling a latent point from the
+    CVAE’s prior distribution, together with the desired grasp type and size.
+    The grasp controller then, gradually reduces the grasp size until the
+    first contact with the object is made. The grasp size is subsequently
+    adjusted to apply the target normal force. Once the robot detects that
+    the tangential force is pointing upwards, indicating the need to release
+    the object, the robot enters the <b>RELEASE</b> state. It ceases further
+    movement and the hand initiates the release process by increasing the
+    grasp size, thereby opening the grasp.
+
+  </p>
+
+  <br>
+  <img src="assets/project_force/force_controller_2.png" style="width:90%" class=center>
+  <figcaption>Fig. 4. Graphical representation of force controller architecture.</figcaption>
+
+  <br>
+  <h1 id="results">Experiments<a hidden class="anchor" href="#results">#</a></h1>
+
+  <p>
+
+    In our experiments, we used the <a class='one' href="https://www.seedrobotics.com/rh8d-adult-robot-hand">Seed Robotics RH8D</a> hand, a humanoid
+    robotic hand with 7 degrees of freedom (DoFs), mounted on a <a class="one" href="https://www.kinovarobotics.com/product/gen3-robots">Kinova Kortex Gen3</a>
+    robot arm. The hand is equipped with the <a class='one' href="https://kb.seedrobotics.com/doku.php?id=fts:fts3 pressuresensor">FTS-3 force sensors</a> in each
+    fingertip, which provide the 3D force applied in the coordinate frame of
+    the fingertip.
+
+    In the Figure below, you can see the execution of one of our experiments.
+    Under the pictures of the execution, you can see the signals recorded by
+    the controller: the average normal force applied by all fingers
+    (blue line), the thresholds that we want the normal force to be below
+    (purple dashed line) and above (yellow dashed line), which are functions
+    of the tangential force, the average tangential force (green), and the
+    grasp size used to generate the grasp posture in each time-step (red).  
+
+  </p>
+
+  <br> 
+  <img src="assets/project_force/pick_place_bottle_final_alternative_small.png" style="width:100%" class=center>
+  <figcaption>Fig. 5. Example experiment, in which the robot grasps and lifts a bottle, transports
+              it, and places it on the desk. The bottom part of the figure shows see the control signals recorded during this task. </figcaption>
+  <br>
+
+  <p>
+
+      The task is divided into four stages: 1)(red part) the initial grasp of the
+      object when it is on the box, in this stage the force controller closes
+      the grasp until the applied normal force is below only the offset $f_n^
+      {offset}$, 2) (green part) the robot tries to lift the object, and as
+      it tries to lift the tangential force increases, increasing the
+      threshold, so the grasp size decreases to apply more normal force, 3)
+      (orange part) the robot transports the object, you can see, in point
+      <b>A</b> in the Figure, a perturbation in the tangential force when the
+      robot begins to move, the controller responds by decreasing the grasp
+      thus stabilizing more the object, and 4) (blue part) the robot enters
+      the releasing phase, where it lowers the arm until it detects that the
+      tangential force is coming from a support surface, in that moment it
+      stops lowering the arm and increases the grasp size slowly releasing
+      the object. In point <b>B</b> in the Figure, you can see that there is
+      noise in the tangential force, due to the arm moving to place the
+      object on the table, which is also reflected in the desired normal
+      force. Because we use the desired normal force as a threshold and not
+      as a reference signal this noise is not manifested in the control of
+      the grasp size. In the Figures below you can see some more demos of
+      our algorithm.
+
+  </p>
+
+  <br>
+  <div class="container">
+     <div class="column">
+        <img border=2 src="assets/project_force/force_ex_1.gif" style="border-radius:10px;">
+        <figcaption> Transportation and placement task. </figcaption>
+     </div>
+     <div class="column">
+        <img border=2 src="assets/project_force/force_ex_3.gif" style="border-radius:10px;">
+        <figcaption> Rotation and placement task. </figcaption>
+     </div>
+     <div class="column">
+        <img border=2 src="assets/project_force/force_ex_2.gif" style="border-radius:10px;">
+        <figcaption> Rotation and handoff task. </figcaption>
+     </div>
+  </div>
+  <figcaption>Fig. 6. More example experiments executed in the real world. </figcaption>
+
+  <br>
+  <h1 id="conclusion">Conclusion<a hidden class="anchor" href="#conclusion">#</a></h1>
+
+  <p> 
+
+    In summary, in this work, we developed a force controller that uses the
+    postural synergies framework to execute several grasping and releasing
+    tasks. The controller determines a target grasp size, based on tactile
+    feedback, which is used by a CVAE model to generate corresponding grasp
+    postures. The main advantages of our method is that we can execute several 
+    grasp types just by changing one value, we do not need slip detection,
+    and we can perform both grasping and releasing tasks. However, our
+    current approach does not account for rotational forces applied to the object. 
+    This could be addressed using visual input to track the pose of the object
+    and detect pose changes that might indicate external rotational forces.
+    
+  </p> 
+
+  <br>
+  <h1 id="references">References<a hidden class="anchor" href="#references">#</a></h1>
+
+  [1] Flanagan et al. <a href="http://brain.phgy.queensu.ca/flanagan/papers/FlaBowJoh_CON_06.pdf">“Control strategies in object manipulation tasks.”</a> Current Opinion in Neurobiology, 2006.
+
+  <br> <br>
+  [2] Johansson et al. <a href="http://www.cns.nyu.edu/~david/courses/sm12/Readings/Johansson_Flanagan%20nrn2009.pdf">“Coding and use of tactile signals from the fingertips in object manipulation tasks.”</a> Nature Reviews Neuroscience, 2009.
+
+  <br> <br>
+  [3] Su et al. <a href="https://am.is.mpg.de/uploads_file/attachment/attachment/248/Su_hum_2015.pdf">“Force estimation and slip detection/classification for grip control using a biomimetic tactile sensor.”</a> Humanoids, 2015.
+
+  <br> <br>
+  [4] Veiga et al. <a href="https://arxiv.org/pdf/1806.05031.pdf">“In-Hand Object Stabilization by Independent Finger Control.”</a> ArXiv, 2018.
+
+  <br> <br>
+  [5] Dimou et al. <a href="https://ieeexplore.ieee.org/document/10000162">
+  "Force Feedback Control For Dexterous Robotic Hands Using Conditional
+  Postural Synergies,"</a> Humanoids, 2022.
+
+  <button onclick="topFunction()" id="topBtn" class="button" title="Go to top">
+    <i class="fa fa-chevron-up fa-fw"></i>
+  </button> 
+
+  <button onclick="parent.location='project_synergies.html'" id="prevBtn"
+    class="button" title="Go to previous">
+    <i class="fa fa-chevron-left fa-fw"></i>
+  </button> 
+
+  <button onclick="parent.location='project_grasp.html'" id="nextBtn" class="button" title="Go to next">
+    <i class="fa fa-chevron-right fa-fw"></i>
+  </button> 
+
+  <button onclick="parent.location='index.html'" id="homeBtn" class="button" title="Go to home">
+    <i class="fa fa-home fa-fw"></i>
+  </button> 
+</div>
+<script src="javascripts/scale.fix.js"></script>
+<script src="javascripts/scripts.js"></script>
+
+</body>
+</html>
