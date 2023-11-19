@@ -1,0 +1,372 @@
+<!-- <!doctype html> -->
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="chrome=1">
+  <title>Teleoperation Project</title>
+
+  <link rel="stylesheet" href="stylesheets/my_styles.css">
+  <link rel="stylesheet" href="stylesheets/pygment_trac.css">
+  <meta name="viewport" content="width=device-width">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+  <script>
+    MathJax = {
+      tex: {
+        inlineMath: [['$', '$'], ['\\(', '\\)']],
+        displayMath: [['$$','$$'], ['\\[', '\\]']],
+        processEscapes: true,
+        processEnvironments: true
+      },
+      options: {
+        skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre']
+      }
+    };
+
+    window.addEventListener('load', (event) => {
+        document.querySelectorAll("mjx-container").forEach(function(x){
+          x.parentElement.classList += 'has-jax'})
+      });
+  </script>
+
+  <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+
+  <script type="text/javascript" id="MathJax-script" async
+    src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+</head>
+<body>
+<div class="my_wrapper">
+  <h1>Vision-Based Teleoperation for a Robotic Hand-Arm System</h1>
+  <div class="toc">
+    <details >
+    <summary accesskey="c" title="(Alt + C)">
+      <span class="details">Table of Contents</span>
+    </summary>
+
+    <div class="inner">
+      <ul>
+      <li><a href="#intro">Introduction</a></li>
+      <li><a href="#hand_pose">Hand Pose Estimation</li>
+      <li><a href="#kinematics">Kinematics Transfer</li> 
+        <ul>
+          <li><a href="#hand">Hand Controller</li>
+          <li><a href="#arm">Arm Controller</li>
+        </ul>
+      <li><a href="#results">Results</a></li>
+      <li><a href="#conclusion">Conclusion</a></li>
+      <li><a href="#references">References</a></li>
+      </ul>
+    </div>
+    </details>
+  </div>
+  
+    
+  <br>
+  <h1 id="intro">Introduction<a hidden class="anchor" href="#introduction">#</a></h1>
+  <p>
+
+    Teleoperation is an essential tool for performing complex
+    manipulation tasks that require dexterity and precision
+    with robots. It has a broad range of applications such as
+    operating robots in remote or dangerous environments and 
+    collecting demonstrations for learning purposes. In particular
+    when it comes to highly dexterous robotic systems, such as 
+    humanoid hands, employing conventional methods for collecting
+    expert demonstrations, e.g. using 
+    <a class="one" href="https://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=7451753">kinesthetic teaching</a> 
+    can be extremely hard. 
+
+    <br> <br>
+    
+    Usually, teleoperation approaches include an operator who
+    controls the robot’s movements and actions using a set of
+    input devices, such as
+    a <a class="one" href="https://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=7759233">haptic device</a>, 
+    a <a class="one" href="https://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=10086822&tag=1">motion-tracking glove</a>,
+    or a <a class="one" href="https://arxiv.org/pdf/2304.13705.pdf">custom hardware solution</a>.
+    Recently, due to the advancements in the computer vision field, 
+    vision-based teleoperation has  gained traction
+    (<a class="one" href="https://arxiv.org/pdf/2202.10448.pdf">Sivakumar et al. 2022</a>,
+    <a class="one" href="https://arxiv.org/pdf/2210.06463.pdf">Arunachalam et al. 2023</a>).
+    In this case, a visual input device, such
+    as a depth or RGB camera, is used to analyze the movements of 
+    the operator and transfer them to the robot. Using a visual 
+    device can be more cost-effective and allows the operator
+    to have more freedom in their movements.  
+
+    <br> <br>
+
+    Here, we focus on a vision-based teleoperation solution
+    using a single RGB camera. The target system is a robotic
+    platform that consists of a humanoid robotic hand mounted on a 
+    robotic arm. More specifically, we use the  
+    <a class="one" href="https://www.kinovarobotics.com/product/gen3-robots">
+    Kinova Kortex Gen3</a> arm and for the hands the  
+    <a class='one' href="https://www.seedrobotics.com/rh8d-adult-robot-hand">Seed Robotics RH8D</a> 
+    hand which has 7 DoFs, and the Pisa/IIT 
+    <a class='one' href="https://qbrobotics.com/product/qb-softhand-2-research/">SoftHand</a>
+    (QB Hand) which has 1 DoF. 
+    Using monocular RGB cameras significantly broadens the use 
+    cases of our system, since they are the simplest and most 
+    low-cost visual device that anybody can have access to. For
+    example, using our system an operator could teleoperate a 
+    robot remotely using their laptop’s camera from their home. 
+    This could help crowd-source expert trajectories for training 
+    learning algorithms.
+
+    <br> <br>
+
+    To achieve this, we use a hand pose estimation method that
+    estimates the 3D joint positions of the operator’s hand using
+    RGB images. We then compute the operator’s hand kinematics and
+    transfer them to the robotic hand. We use the joint angles of
+    the operator’s hand to control the robotic fingers and the wrist
+    position to control the robot’s end-effector. We demonstrate
+    the effectiveness of our system by presenting a series of
+    pick-and-place tasks, both in a simulated and a real-world
+    scenario.
+  </p>
+
+  <br>
+  <h1 id="hand_pose">Hand Pose Estimation<a hidden class="anchor" href="#hand_pose">#</a></h1>
+  
+  <p>
+    Lately, several methods have been developed for 3D hand
+    pose estimation using monocular RGB inputs. Most of them
+    rely on neural network architectures that are trained on
+    large datasets. Two popular solutions are the 
+    <a class="one" href="https://github.com/facebookresearch/frankmocap">FrankMocap</a> 
+    framework 
+(<a class="one" href="https://arxiv.org/pdf/2108.06428.pdf">Rong et al. 2021</a>)
+    and the 
+    <a class="one" href="https://developers.google.com/mediapipe/solutions/vision/hand_landmarker">MediaPipe Hands</a> solution
+(<a class="one" href="https://arxiv.org/pdf/2006.10214.pdf">Zhang et al. 2020</a>)
+    . FrankMocap
+    can output also the 3D model of the hand using the 
+    hand deformation model 
+    <a class="one" href="https://arxiv.org/pdf/2201.02610.pdf">MANO</a>. 
+    On the other hand, MediaPipe estimates only the relative 3D joint positions of the 
+    hand. Both methods produce accurate estimations in most
+    cases. However, in some preliminary experiments, FrankMocap seemed
+    to confuse fingers in some challenging poses. In addition, 
+    FrankMocap runs at around 10 fps, while MediaPipe runs at around
+    30 fps on a desktop computer with an average GPU. Since 
+    we need the hand pose estimation method to run in real-time 
+    to reliably control the robot we opted to use the MediaPipe
+    solution.
+  </p>
+
+  <br>
+  <h1 id="kinematics">Kinematics Transfer<a hidden class="anchor" href="#kinematics">#</a></h1>
+ 
+  <p>
+    After obtaining the hand landmarks the next step is to
+    compute the operator’s hand kinematics and transfer them
+    to the robotic system. The main component of the hand's
+    kinematics is the finger’s positions, which can be represented
+    by the joint’s angles or the fingertip’s positions. But, in order
+    to perform more practical manipulation tasks, e.g. pick-and-place 
+    objects, opening containers, etc., that might be useful
+    in more general environments, we need the hand to be able
+    to move around in the space to interact with the objects in
+    the environment. Consequently, we also need to transfer the
+    3D position of the hand in the space. Using this position, we
+    can also teleoperate the robotic arm that the hand is mounted
+    on.
+  </p>
+
+  <br>
+  <h2 id="hand">Hand Controller<a hidden class="anchor" href="#hand">#</a></h2>
+  
+  <p>
+    There are several approaches for transferring the operator's 
+    hand kinematics to the robotic hand, such as using inverse 
+    kinematics (IK) to optimize keypoints of the robotic hand 
+    to match the operator’s hand keypoints
+    (<a class="one" href="https://arxiv.org/pdf/1910.03135.pdf">Handa et al. 2020</a>),
+    or using some end-to-end solution to directly predict the robot joint angles
+    (<a class="one" href="https://arxiv.org/pdf/1809.06268.pdf">Li et al. 2019</a>). 
+    However, using the inverse kinematic solution requires 
+    accurate models of the robotic hands, which in our case, 
+    do not exist. On the other hand, end-to-end solutions 
+    require collecting training data which is time-consuming. 
+
+<br> <br>
+
+    To this end, we opted for a simple angle-based mapping method,
+    which is fast and does not require any training. 
+    We assume that the operator has visual
+    feedback of the teleoperated system, so they can adapt their
+    movements in cases of inaccuracies caused by the mapping
+    method. For the Seed Robotics hand that has 7 DoFs, 2 for the
+    wrist and 5 for the fingers, we chose five angles extracted
+    from the estimated pose to transfer to the robot. You can see
+    the joints that are used for the mapping in the Figure below.
+    For the Pisa\IIT Soft hand, which has only 1 DoF, we use the
+    average of all the joint angles of the operator's hand to 
+    command it.
+  </p>
+  
+  <br>
+  <img src="assets/project_teleop/hand_kinematics.png" style="width:70%" class=center>
+  <figcaption>
+    Fig. 1. The fixed angle-based mapping from the operator's hand to the Seed Robotics hand.
+  </figcaption>
+  <br>
+
+  <br>
+  <h2 id="arm">Arm Controller<a hidden class="anchor" href="#arm">#</a></h2>
+
+  <p>
+    Controlling the arm of the robot can be done using only the 
+    3D position of the wrist of the operator. The hand pose 
+    extraction methods presented above, estimate 2.5D coordinates
+    for the hand landmarks. This means that we can only control
+    the end-effector of the robotic arm in two directions, since
+    we do not have enough information about the third. So, we 
+    chose to map the movements of the operator’s wrist in the 
+    horizontal and vertical direction in the 2D image to the $z$
+    and $x$ axis of the robot’s end-effector. 
+    In order to be able to control the robot in all three 
+    directions to make the system more useful in real-world 
+    scenarios, we track the second hand of the operator
+    and map its movement on the horizontal axis to the 
+    robot’s $y$ direction.
+    In practice, the robot and the operator’s hand start from
+    a fixed position near the middle of their operational space,
+    we then calculate small displacements of the wrist and
+    transfer them to the robotic arm using an inverse kinematics
+    controller. 
+  </p>
+  
+  <br>
+  <img src="assets/project_teleop/controller.png" style="width:100%" class=center>
+  <figcaption>
+    Fig. 2. Schematic representation of final teleoperation controller. 
+  </figcaption>
+  <br>
+
+  <br>
+  <h1 id="results">Results<a hidden class="anchor" href="#results">#</a></h1>
+  
+  <p>
+    We applied this method both in simulation and in a real-world
+    setting. For the simulated tasks we developed one environment 
+    for each hand. For the Seed Robotics hand, we used three colored
+    cubes on a table and the goal was to stack them on top of each
+    other. You can see the execution of the task in the video below.
+  </p>
+
+  <br>
+  <iframe width="2069" height="912" src="https://www.youtube.com/embed/N0ynuU8KlSQ" 
+  title="Vision-based teleoperation demo part 1" frameborder="0" 
+  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" 
+  allowfullscreen></iframe>
+  <br>
+
+  <p>
+    For the Pisa/IIT SoftHand, we used three household objects:
+    an orange, a coke can, and a meat can and the goal was 
+    to move everything inside the tray on the side of the table. 
+    You can see the execution of the task in the video below. 
+    In this case, we also make use of the second hand to 
+    control the arm in the $y$ direction.
+  </p>
+
+  <br>
+  <iframe width="2069" height="912" src="https://www.youtube.com/embed/ZBkWHvzcfsk" 
+  title="Video-based teleoperation demo part 2" frameborder="0" 
+  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" 
+  allowfullscreen></iframe>
+  <br>
+
+  <p>
+    Finally, for the real-world experiments we used the
+    Seed Robotics hand and the Kinova arm to perform a table
+    cleaning task. We placed three small boxes on a table and a
+    big cardboard box as their target position. The operator then
+    teleoperated the robotic system using the vision pipeline to
+    place all objects in the cardboard box. 
+  </p>
+
+  <br>
+  <iframe width="2069" height="912" src="https://www.youtube.com/embed/ITbBVVQnfk8" 
+  title="Video-based teleoperation demo (real robot)" frameborder="0" 
+  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" 
+  allowfullscreen></iframe>
+  <br>
+
+  <br>
+  <h1 id="conclusion">Conclusion<a hidden class="anchor" href="#conclusion">#</a></h1>
+
+  <p>
+  In summary, we developed a system for teleoperating a dexterous robot through 
+  monocular RGB input. Although we can control the robot to perform simple 
+  manipulation tasks, our system lacks the ability to control the orientation of
+  the hand, which could be an interesting future engineering challenge. 
+  This project demonstrated that building such teleoperation systems can be 
+  fairly easy and cost-effective. Ongoing research in vision based teleoperation
+  (<a class="one" href="https://arxiv.org/pdf/2307.04577.pdf">Qin et al. 2023</a>)
+  can have provide multiple benefits for the field of robotic manipulation.
+  </p>
+  
+  <br>
+  <h1 id="references">References<a hidden class="anchor" href="#references">#</a></h1>
+
+  [1] Arunachalam et al. <a href="https://arxiv.org/pdf/2203.13251.pdf">
+  “Dexterous Imitation Made Easy: A Learning-Based Framework for Efficient Dexterous Manipulation.” 
+  </a> ICRA, 2023.
+  
+  <br> <br>
+  [2] Sivakumar et al. <a href="https://arxiv.org/pdf/2202.10448.pdf">
+  “Robotic Telekinesis: Learning a Robotic Hand Imitator by Watching Humans on YouTube.” 
+  </a> Arxiv, 2022.
+
+  <br> <br>
+  [3] Rong et al. <a href="https://arxiv.org/pdf/2108.06428.pdf">
+  “FrankMocap: A Monocular 3D Whole-Body Pose Estimation System via Regression and Integration.” 
+  </a>ICCVW, 2021. 
+ 
+  <br> <br>
+  [4] Zhang et al. <a href="https://arxiv.org/pdf/2006.10214.pdf">
+  “MediaPipe Hands: On-device Real-time Hand Tracking” 
+  </a>CV4ARVR, 2020. 
+
+  <br> <br>
+  [5] Handa et al. <a href="https://arxiv.org/pdf/1910.03135.pdf">
+  “DexPilot: Vision-Based Teleoperation of Dexterous Robotic Hand-Arm System.” 
+  </a> ICRA, 2020.
+
+  <br> <br>
+  [6] Li et al. <a href="https://arxiv.org/pdf/1809.06268.pdf">
+  “Vision-based Teleoperation of Shadow Dexterous Hand using End-to-End Deep Neural Network.” 
+  </a> ICRA, 2019.
+
+  <br> <br>
+  [7] Qin et al. <a href="https://arxiv.org/pdf/2307.04577.pdf">
+  “AnyTeleop: A General Vision-Based Dexterous Robot Arm-Hand Teleoperation System” 
+  </a> RSS, 2023.
+  
+  <button onclick="parent.location='project_repair.html'" id="prevBtn"
+    class="button" title="Go to previous">
+    <i class="fa fa-chevron-left fa-fw"></i>
+  </button> 
+
+  <button onclick="topFunction()" id="topBtn" class="button" title="Go to top">
+    <i class="fa fa-chevron-up fa-fw"></i>
+  </button> 
+
+  <button onclick="parent.location='project_flows.html'" id="nextBtn" class="button" title="Go to next">
+    <i class="fa fa-chevron-right fa-fw"></i>
+  </button> 
+
+  <button onclick="parent.location='index.html'" id="homeBtn" class="button" title="Go to home">
+    <i class="fa fa-home fa-fw"></i>
+  </button> 
+</div>
+<script src="javascripts/scale.fix.js"></script>
+<script src="javascripts/scripts.js"></script>
+
+</body>
+</html>
