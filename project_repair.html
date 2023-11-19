@@ -1,0 +1,214 @@
+<!-- <!doctype html> -->
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="chrome=1">
+  <title>RePAIR Project</title>
+
+  <link rel="stylesheet" href="stylesheets/my_styles.css">
+  <link rel="stylesheet" href="stylesheets/pygment_trac.css">
+  <meta name="viewport" content="width=device-width">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+  <script>
+    MathJax = {
+      tex: {
+        inlineMath: [['$', '$'], ['\\(', '\\)']],
+        displayMath: [['$$','$$'], ['\\[', '\\]']],
+        processEscapes: true,
+        processEnvironments: true
+      },
+      options: {
+        skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre']
+      }
+    };
+
+    window.addEventListener('load', (event) => {
+        document.querySelectorAll("mjx-container").forEach(function(x){
+          x.parentElement.classList += 'has-jax'})
+      });
+  </script>
+
+  <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+
+  <script type="text/javascript" id="MathJax-script" async
+    src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+</head>
+<body>
+<div class="my_wrapper">
+  <h1>Reconstructing the Past: Artificial Intelligence and Robotics meet Cultural Heritage (RePAIR)</h1>
+  <div class="toc">
+    <details >
+    <summary accesskey="c" title="(Alt + C)">
+      <span class="details">Table of Contents</span>
+    </summary>
+
+    <div class="inner">
+      <ul>
+      <li><a href="#intro">Introduction</a></li>
+      <li><a href="#approach">Approach</a></li>
+      <li><a href="#future">Future Work</a></li>
+      <li><a href="#references">References</a></li>
+      </ul>
+    </div>
+    </details>
+  </div>
+
+  <p> 
+  </p>
+
+  <br>
+  <h1 id="intro">Introduction<a hidden class="anchor"
+      href="#intro">#</a></h1>
+  <p>
+  <a class="one" href="https://www.repairproject.eu">RePAIR</a> 
+  is a project funded by the Horizon 2020 Research and Innovation 
+  program of the European Union. The main goal of the project is to
+  develop an automated solution for the physical reconstruction of 
+  fragmented 
+  <a class="one" href="https://www.repairproject.eu/gallery/">fresco artworks</a>.
+  More precisely, we aim to leverage
+  advancements in robotics and computer vision to support the 
+  archaeological site of Pompeii in the digitization of fresco 
+  fragments and their subsequent restoration to their original forms.
+  This automated solution will virtually eliminate one of the most
+  labor-intensive challenges: the processing and reassembling of thousands 
+  of fresco pieces, thus significantly accelerating the job of archaeologists. 
+
+  <br><br>
+  The final system is expected to autonomously handle
+  fragile fresco artifacts. This system will be able to digitize 
+  the artifacts, extract their 3D structure using a network of 
+  camera sensors, digitally reconstruct them into their original 
+  configuration by solving the 3D puzzle, and ultimately physically
+  assemble the currently accessible pieces. Different aspects 
+  of this process have been assigned to different partners.
+  Our lab is responsible for developing the grasping and motion
+  planning systems that will run on the robot in order to handle
+  the frescos.
+
+  </p>
+
+
+  <br>
+  <h1 id="approach">Approach
+  <a hidden class="anchor" href="#approach">#</a></h1>
+  
+  <p>
+  In our lab, we have built a mock-up environment using the
+  <a class="one" href="https://www.kinovarobotics.com/product/gen3-robots">
+  Kinova Kortex Gen3</a> robotic arm and the Pisa/IIT 
+  <a class='one' href="https://qbrobotics.com/product/qb-softhand-2-research/">SoftHand</a>
+  (QB Hand).
+  A main aspect of the project is to use soft robotic hands
+  that can adapt to the shape of the object and prevent 
+  damaging the objects and the hardware.
+  Our workflow is divided into two stages. Firstly,
+  the perception part, in which we detect the frescos through 
+  vision, select which one to grasp, and complete the partial
+  point cloud. Secondly, the motion planning part, in which we
+  use a geometric heuristic to propose a candidate grasp, and 
+  the motion planner generates a feasible trajectory to execute it.
+  <br><br>
+  
+  In our current pipeline, we begin by acquiring a point cloud of the 
+  scene, which consists of fresco parts on top of a flat surface. 
+  We, then, employ Open3D's
+  <a class="one" href="http://www.open3d.org/docs/latest/tutorial/Basic/pointcloud.html#Plane-segmentation">plane segmentation</a> 
+  algorithm to remove the supporting surface from the point cloud. We use the 
+  <a class="one" href="http://www.open3d.org/docs/latest/tutorial/Basic/pointcloud.html#DBSCAN-clustering">DBSCAN algorithm</a> 
+  to cluster the point cloud containing
+  all the frescos and effectively segment the frescos with each other.
+  We select the biggest fresco as our first target for grasping. 
+  The fresco point cloud is a partial view of the entire fresco which
+  can result in the generation of imprecise grasp candidates. 
+  To avoid this, we employ a point cloud competition method (<a class="one" href="https://arxiv.org/abs/2301.00866">Mohammadi et al. 2023</a>) that takes
+  as input the partial view and predicts a complete point cloud of 
+  the target object. This complete point cloud is then used in the
+  subsequent grasp planning stage.
+  <br><br>
+  After detecting the target fresco and predicting a complete point
+  cloud, the next step is to compute a candidate grasp pose and execute 
+  it. We employ a simple geometric heuristic to propose grasp poses. 
+  More specifically, we use the center of mass of the object as the 
+  target grasp position, which corresponds roughly to the middle point 
+  of the palm. This way, when the fingers start closing the object 
+  lies inside the hand. To decide the hand’s rotation, we need to take into 
+  account the fact that the fingers of the hand should not come in
+  contact with the upper part of the fresco to avoid damaging the painting.
+  So, we want the fingers to grasp the object by the side. The rotation 
+  of the hand is then fixed such that the palm is always parallel to 
+  the table and looking downward. This way, when the hand starts closing,
+  the fingers tend to enclose the object and grasp it from its sides. 
+  Finally, we use <a class="one" href="https://moveit.ros.org/">MoveIt</a>
+  to plan the trajectory of the robot and execute it.
+  You can see an example of the vision and grasping pipeline in 
+  the video below.
+  </p>
+
+  <br>
+  <iframe width="1280" height="865"
+    src="https://www.youtube.com/embed/2Z0K2a_24bw" title="Vision and grasping
+    pipeline for fresco grasping" frameborder="0" allow="accelerometer; autoplay;
+  clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+  allowfullscreen></iframe>
+  <br>
+
+  <p>
+  Using this pipeline, we can execute more complex tasks. For example, in the video below y
+  ou can see an example task of detecting two frescos and transferring them to another table
+  for further processing.
+  </p>
+
+  <br>
+  <iframe width="1280" height="720"
+    src="https://www.youtube.com/embed/Uk8CttMvHLY" title="Fresco grasping demo"
+    frameborder="0" allow="accelerometer; autoplay; clipboard-write;
+  encrypted-media; gyroscope; picture-in-picture; web-share"
+  allowfullscreen></iframe>
+  <br>
+
+
+  <h1 id="future">Future Work
+  <a hidden class="anchor" href="#future">#</a></h1>
+  <p>
+  Currently, we are working to improve the grasping system by designing a more
+  intelligent method to propose candidate grasp poses to the planner. Our new 
+  method is again based on the geometric structure of the object and tries to 
+  detect the antipodal sides of the object in order to use them as candidate 
+  contact points for the fingers. We are also working on a reinforcement learning
+  solution where we have an agent performing the entire grasping and placing 
+  tasks without needing to compute grasp poses.
+  </p>
+
+  <br>
+  <h1 id="references">References
+  <a hidden class="anchor" href="#references">#</a></h1>
+  
+  [1] Mohammadi et al.
+  <a href="https://arxiv.org/abs/2301.00866">"3DSGrasp: 3D Shape-Completion for Robotic Grasp."</a>
+  ICRA, 2023.
+  
+  <button onclick="parent.location='project_flows.html'" id="prevBtn"
+    class="button" title="Go to previous">
+    <i class="fa fa-chevron-left fa-fw"></i>
+  </button> 
+
+  <button onclick="topFunction()" id="topBtn" class="button" title="Go to top">
+    <i class="fa fa-chevron-up fa-fw"></i>
+  </button> 
+
+  <button onclick="parent.location='project_teleop.html'" id="nextBtn" class="button" title="Go to next">
+    <i class="fa fa-chevron-right fa-fw"></i>
+  </button> 
+
+  <button onclick="parent.location='index.html'" id="homeBtn" class="button" title="Go to home">
+    <i class="fa fa-home fa-fw"></i>
+  </button> 
+</div>
+<script src="javascripts/scale.fix.js"></script>
+<script src="javascripts/scripts.js"></script>
+
+</body>
+</html>
