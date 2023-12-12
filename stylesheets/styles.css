@@ -295,3 +295,17 @@ footer {
     color:#444;
   }
 }
+
+.quote_container {
+ display: grid;
+ align-items: center; 
+ grid-template-columns: 4fr 1fr;
+ column-gap: 2px;
+}
+
+.quote_text {
+  color:#2B2A4C;
+  font-size: 15px;
+  font-weight: bold;
+  font-style: italic;
+}
